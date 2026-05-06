@@ -133,8 +133,11 @@ _loop() {
 }
 
 _quit_loop() {
-    #kill -9 $$
-    killall -q bash 2>/dev/null >/dev/null
+    local pid_file="${_dir_vid}/.loop_pid"
+    if [ -f "$pid_file" ]; then
+        kill "$(cat "$pid_file")" 2>/dev/null
+        rm -f "$pid_file"
+    fi
 }
 
 _set_img() {
@@ -157,6 +160,20 @@ _show() {
 }
 
 _video() {
+    # create map file if it doesnt exist
+    if ! [ -e "${_dir_vid}/map" ]; then
+        touch "${_dir_vid}/map"
+    fi
+
+    # check if there is already a process running and kill it
+    # before continuing this one
+    local pid_file="${_dir_vid}/.loop_pid"
+
+    if [ -f "$pid_file" ]; then
+        kill "$(cat "$pid_file")" 2>/dev/null
+        rm -f "$pid_file"
+    fi
+
     if a=$(awk -v file="$1" '$1 == file {print $2; found=1} END {exit !found}' "${_dir_vid}/map"); then
         # echo "Duplicate found: video '$1' already has ID $a"
         _set_video $a
@@ -188,6 +205,10 @@ _video() {
         let i=i+1
         [[ "${i}" -gt "${t}" ]] && i=1
     done &
+
+    # store this process PID
+    echo $! > "$pid_file"
+    return 0
 }
 
 _list_vid() {
@@ -225,6 +246,8 @@ _set_video() {
                 let i=i+1
                 [[ "${i}" -gt "${t}" ]] && i=1
             done &
+            # store this process PID
+            echo $! >"$pid_file"
         fi
     fi
 }
