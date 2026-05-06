@@ -189,10 +189,20 @@ _video() {
     mkdir -p "$_dir_vid/$a"
 
     echo -e "${_lang[27]}...\r"
+
+    local fps sleep_time
+
+    fps=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate \
+        -of default=noprint_wrappers=1:nokey=1 "$1")
+    sleep_time=$(awk -F/ '{printf "%.5f", 1 / ($1 / ($2 ? $2 : 1))}' <<<"$fps")
+    [[ -z "$sleep_time" ]] && sleep_time="0.05"
+
     ffmpeg -y -ss 00:00 -i ${1} -t 10 "${_dir_vid}/${a}/filename%05d.png" >${_dir_vid}/${a}/video.info 2>&1
     t=$(ls ${_dir_vid}/${a}/* | wc -l)
     let t=t-1
+
     echo ${1} >${_dir_vid}/${a}/video.info
+    echo ${sleep_time} >>${_dir_vid}/${a}/video.info
 
     mapfile -t frames < <(ls -1 "${_dir_vid}/${a}/"*.png | sort -V)
     total=${#frames[@]}
@@ -200,8 +210,7 @@ _video() {
 
     while :; do
         feh --bg-scale "${frames[i]}"
-        # 30 frames
-        sleep 0.05
+        sleep "$sleep_time"
         ((i = (i + 1) % total))
     done &
 
@@ -218,16 +227,24 @@ _list_vid() {
     fi
     for i in $(ls -1 ${_dir_vid}/*/video.info); do
         echo $i | awk 'BEGIN { FS = "/" } ; { print $6 }'
-        cat $i
+        head -n1 $i
     done | paste - - | sed 's/\t/ → /g'
 }
 
 _set_video() {
-    ls -d ${_dir_vid}/* 2>/dev/null >/dev/null
-    if [[ "$?" != "0" ]]; then
-        echo ${_lang[38]}
+    # if the dir doesnt exist
+    if [[ ! -d "${_dir_vid}/${1}" ]]; then
+        echo "${_lang[29]} $(ls -d1 "${_dir_vid}"/*/ | wc -l)"
         exit 1
     fi
+
+    local pid_file="${_dir_vid}/.loop_pid"
+
+    if [ -f "$pid_file" ]; then
+        kill "$(cat "$pid_file")" 2>/dev/null
+        rm -f "$pid_file"
+    fi
+
     if [[ $(echo "$1" | sed -n -r '/^[0-9]+$/p') == "" ]]; then
         echo "${_lang[28]} '${0##*/} --list-videos'."
     else
@@ -238,11 +255,13 @@ _set_video() {
             t=$(ls ${_dir_vid}/${1}/* | wc -l)
             let t=t-1
             i=1
-            mapfile -t frames < <(ls -1 "${_dir_vid}/${a}/"*.png | sort -V)
+            mapfile -t frames < <(ls -1 "${_dir_vid}/$1/"*.png | sort -V)
             total=${#frames[@]}
+            sleep_time=$(sed -n '2{p;q;}' "${_dir_vid}/$1/video.info")
+            [[ -z "$sleep_time" ]] && sleep_time="0.05"
             while :; do
                 feh --bg-scale "${frames[i]}"
-                sleep 0.05
+                sleep "$sleep_time"
                 ((i = (i + 1) % total))
             done &
             # store this process PID
@@ -254,7 +273,7 @@ _set_video() {
 while [[ "$1" ]]; do
     case "${1}" in
     -h | --help) _usage ;;
-    -v | --version) echo "${0##*/} 0.0.2" ;;
+    -v | --version) echo "${0##*/} 0.0.3" ;;
     -s | --show) _show && exit ;;
     -c | --count) _count ;;
     -d | --display) _current ;;
