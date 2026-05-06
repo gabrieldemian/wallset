@@ -181,11 +181,8 @@ _video() {
     fi
 
     a=1
-
-    for i in $(ls -d $_dir_vid/*/ 2>/dev/null); do
-        if [[ -d "$_dir_vid/$a" ]]; then
-            let a=a+1
-        fi
+    while [[ -d "${_dir_vid}/${a}" ]]; do
+        ((a++))
     done
 
     echo "${1} ${a}" >>"${_dir_vid}/map"
@@ -197,17 +194,19 @@ _video() {
     let t=t-1
     echo ${1} >${_dir_vid}/${a}/video.info
 
-    i=1
-    # ctrl_c
+    mapfile -t frames < <(ls -1 "${_dir_vid}/${a}/"*.png | sort -V)
+    total=${#frames[@]}
+    i=0
+
     while :; do
-        feh --bg-scale $(ls -1 ${_dir_vid}/${a}/* | sed -n "${i}p")
-        sleep 0.01
-        let i=i+1
-        [[ "${i}" -gt "${t}" ]] && i=1
+        feh --bg-scale "${frames[i]}"
+        # 30 frames
+        sleep 0.05
+        ((i = (i + 1) % total))
     done &
 
     # store this process PID
-    echo $! > "$pid_file"
+    echo $! >"$pid_file"
     return 0
 }
 
@@ -239,12 +238,12 @@ _set_video() {
             t=$(ls ${_dir_vid}/${1}/* | wc -l)
             let t=t-1
             i=1
-            # ctrl_c
+            mapfile -t frames < <(ls -1 "${_dir_vid}/${a}/"*.png | sort -V)
+            total=${#frames[@]}
             while :; do
-                feh --bg-scale $(ls -1 ${_dir_vid}/${1}/* | sed -n "${i}p")
-                sleep 0.01
-                let i=i+1
-                [[ "${i}" -gt "${t}" ]] && i=1
+                feh --bg-scale "${frames[i]}"
+                sleep 0.05
+                ((i = (i + 1) % total))
             done &
             # store this process PID
             echo $! >"$pid_file"
@@ -255,7 +254,7 @@ _set_video() {
 while [[ "$1" ]]; do
     case "${1}" in
     -h | --help) _usage ;;
-    -v | --version) echo "${0##*/} 0.0.1-beta" ;;
+    -v | --version) echo "${0##*/} 0.0.2" ;;
     -s | --show) _show && exit ;;
     -c | --count) _count ;;
     -d | --display) _current ;;
@@ -283,8 +282,7 @@ while [[ "$1" ]]; do
     -u | --use)
         shift
 
-        ls ${_dir_img}/*.png 2>/dev/null >/dev/null
-        if [[ "$?" != "0" ]]; then
+        if ! ls "${_dir_img}"/*.png &>/dev/null; then
             echo "${_lang[37]}"
             exit 1
         fi
